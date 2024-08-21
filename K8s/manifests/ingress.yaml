@@ -1,0 +1,53 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  namespace: three-tier
+  name: mainlb
+  annotations:
+    # Annotations for AWS ALB configuration
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+spec:
+  ingressClassName: alb  # Specifies the Ingress class to use (ALB Ingress controller in this case)
+  rules:
+    - http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: api  # Name of the service
+                port:
+                  number: 3500  # Port on the service
+
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend  # Name of the frontend service
+                port:
+                  number: 3000  # Port on the frontend service
+
+          - path: /healthz
+            pathType: Exact
+            backend:
+              service:
+                name: api  # Name of the service
+                port:
+                  number: 3500  # Port on the service
+
+          - path: /started
+            pathType: Exact
+            backend:
+              service:
+                name: api  # Name of the service
+                port:
+                  number: 3500  # Port on the service
+
+          - path: /ready
+            pathType: Exact
+            backend:
+              service:
+                name: api  # Name of the service
+                port:
+                  number: 3500  # Port on the service

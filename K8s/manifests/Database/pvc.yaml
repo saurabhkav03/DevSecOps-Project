@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongo-volume-claim
+  namespace: three-tier
+spec:
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: "" #empty means default, optional
+  accessModes:
+    - ReadWriteOnce

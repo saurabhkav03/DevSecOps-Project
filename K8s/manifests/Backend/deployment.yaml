@@ -1,0 +1,70 @@
+apiVersion: apps/v1  # Specifies the API version used for the deployment resource
+kind: Deployment  # Declares that this YAML file is a Deployment resource
+metadata:
+  name: api  # The name of the deployment
+  namespace: three-tier  # The namespace where this deployment will reside
+  labels:  # Metadata labels to categorize and filter resources
+    role: api  # Label indicating the role of this deployment
+    env: demo  # Label indicating the environment (demo in this case)
+spec:
+  replicas: 2  # The number of pod replicas to run
+  strategy:
+    type: RollingUpdate  # Strategy type, default is RollingUpdate
+    rollingUpdate:
+      maxSurge: 1  # Maximum number of additional pods that can be created during the update process
+      maxUnavailable: 25%  # Maximum number of pods that can be unavailable during the update process
+  selector:
+    matchLabels:
+      role: api  # Pods must match this label to be selected by this deployment
+  template:
+    metadata:
+      labels:
+        role: api  # Label applied to the pod, must match the selector
+    spec:
+      containers:
+      - name: api  # Name of the container
+        image: 905418277025.dkr.ecr.us-east-1.amazonaws.com/backend:1  # Docker image from Amazon ECR
+        imagePullPolicy: Always  # Always pull the image when starting a container
+        env:
+        - name: MONGO_CONN_STR  # Environment variable for MongoDB connection string
+          value: mongodb://mongodb-svc:27017/todo?directConnection=true  # Value for the MongoDB connection string
+        - name: MONGO_USERNAME  # Environment variable for MongoDB username
+          valueFrom:
+            secretKeyRef:  # Value is fetched from a Kubernetes secret
+              name: mongo-sec  # Name of the Kubernetes secret containing the credentials
+              key: username  # Key in the secret that holds the username value
+        - name: MONGO_PASSWORD  # Environment variable for MongoDB password
+          valueFrom:
+            secretKeyRef:  # Value is fetched from a Kubernetes secret
+              name: mongo-sec  # Name of the Kubernetes secret containing the credentials
+              key: password  # Key in the secret that holds the password value
+        resources:
+          limits:
+            memory: "128Mi"  # Maximum memory allocated for the container
+            cpu: "500m"  # Maximum CPU allocated for the container
+        ports:
+        - containerPort: 3500  # Port on which the application listens inside the container
+        readinessProbe:
+          httpGet:
+            path: /ready  # Path to check for readiness
+            port: 3500  # Port to use for the readiness probe
+          initialDelaySeconds: 15  # Time to wait before starting readiness checks
+          periodSeconds: 10  # Frequency of the readiness check
+          failureThreshold: 30  # Number of failures before marking the pod as not ready
+          successThreshold: 1  # Number of successes required to mark the pod as ready
+        livenessProbe:
+          httpGet:
+            path: /healthz  # Path to check for liveness
+            port: 3500  # Port to use for the liveness probe
+          initialDelaySeconds: 15  # Time to wait before starting liveness checks
+          periodSeconds: 10  # Frequency of the liveness check
+          failureThreshold: 30  # Number of failures before restarting the container
+          successThreshold: 1  # Number of successes required to mark the pod as alive
+        startupProbe:
+          httpGet:
+            path: /started  # Path to check if the container has started
+            port: 3500  # Port to use for the startup probe
+          initialDelaySeconds: 15  # Time to wait before starting startup checks
+          periodSeconds: 10  # Frequency of the startup check
+          failureThreshold: 30  # Number of failures before restarting the container
+          successThreshold: 1  # Number of successes required to mark the container as started

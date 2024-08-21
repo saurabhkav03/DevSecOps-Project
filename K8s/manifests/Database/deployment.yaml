@@ -1,0 +1,44 @@
+apiVersion: apps/v1  # API version for the Deployment resource
+kind: Deployment  # Specifies that this resource is a Deployment
+metadata:
+  name: mongodb  # Name of the Deployment
+  namespace: three-tier  # Namespace where the Deployment will be created
+spec:
+  replicas: 1  # Number of pod replicas to run (single instance of MongoDB)
+  selector:
+    matchLabels:
+      app: mongodb  # Selector to match pods with the label `app: mongodb`
+  template:
+    metadata:
+      labels:
+        app: mongodb  # Labels applied to the pods created by this Deployment
+    spec:
+      containers:
+      - name: mongodb  # Name of the container running inside the pod
+        image: mongo:4.4.6  # Docker image for MongoDB version 4.4.6
+        env:  # Environment variables for configuring the MongoDB container
+          - name: MONGO_INITDB_ROOT_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: mongo-sec  # Reference to the Kubernetes Secret `mongo-sec`
+                key: username  # Key in the Secret that stores the root username
+          - name: MONGO_INITDB_ROOT_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: mongo-sec  # Reference to the Kubernetes Secret `mongo-sec`
+                key: password  # Key in the Secret that stores the root password
+        resources:  # Resource limits for the container
+          limits:
+            memory: "128Mi"  # Maximum memory allocation for the container (128 MiB)
+            cpu: "500m"  # Maximum CPU allocation for the container (500 millicores)
+        ports:
+        - containerPort: 27017  # Exposes MongoDB on port 27017 within the pod
+
+        volumeMounts:
+        - name: mongo-volume  # Name of the volume to mount
+          mountPath: /data/db  # Directory in the container where the volume will be mounted
+
+      volumes:  # Volumes section to define persistent storage for the pod
+      - name: mongo-volume  # Name of the volume, referenced in `volumeMounts`
+        persistentVolumeClaim:
+          claimName: mongo-volume-claim  # Name of the PersistentVolumeClaim (PVC) used for storage
