@@ -1,0 +1,28 @@
+pipeline {
+    agent any
+    parameters {
+        string(defaultValue: 'dev', name: 'ENVIRONMENT', description: 'Target environment')
+        choice(name: 'ACTION', choices: ['apply', 'destroy'], description: "What action should Terraform perform?")
+    }
+
+    stages {
+        stage('SCM checkout') {
+            steps {
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/saurabhkav03/DevSecOps-Project.git']])
+            }
+        }
+        stage('Terraform') {
+            steps {
+                withAWS(credentials: 'aws-creds', region: 'us-east-1') {
+                    script {
+                        dir('eks') {
+                            sh 'terraform init'
+                            sh 'terraform validate'
+                            sh "terraform ${params.ACTION} -auto-approve"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
