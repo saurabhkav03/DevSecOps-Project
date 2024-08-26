@@ -1,5 +1,5 @@
 resource "aws_instance" "jump_server" {
-  ami                    = "ami-xxxxxx"  # Replace with your desired AMI ID (e.g., Amazon Linux 2)
+  ami                    = "ami-0a0e5d9c7acc336f1"  # Replace with your desired AMI ID (e.g., Amazon Linux 2)
   instance_type          = "t2.medium"
   vpc_security_group_ids = [aws_security_group.jump_server_sg.id]
   subnet_id              = module.vpc.public_subnets[0]  # Use the first public subnet
