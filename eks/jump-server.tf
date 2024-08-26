@@ -2,13 +2,15 @@ resource "aws_instance" "jump_server" {
   ami                    = "ami-0a0e5d9c7acc336f1"  # Replace with your desired AMI ID (e.g., Amazon Linux 2)
   instance_type          = "t2.medium"
   vpc_security_group_ids = [aws_security_group.jump_server_sg.id]
-  subnet_id              = module.vpc.public_subnets[0]  # Use the first public subnet
+  subnet_id              = module.vpc.public_subnets  # Replace with your public subnet ID
 
   root_block_device {
     volume_size = 30  # 30 GB storage
   }
 
   iam_instance_profile = aws_iam_instance_profile.admin_access.name
+
+  associate_public_ip_address = true  # Ensure public IP is assigned
 
   user_data = <<-EOF
               #!/bin/bash
@@ -35,15 +37,13 @@ resource "aws_instance" "jump_server" {
 resource "aws_security_group" "jump_server_sg" {
   name        = "jump-server-sg"
   description = "Allow SSH and access to EKS API and worker nodes"
-  vpc_id      = module.vpc.vpc_id  # Correct reference for VPC ID
+  vpc_id      = module.vpc.id  # Replace with your VPC ID
 
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Allow SSH access from all IPs
-    # Uncomment the below line and comment the above line when you want to restrict access.
-    # cidr_blocks = [var.allowed_ip_cidr]  # Restrict SSH access to specific IP(s)
+    cidr_blocks = ["0.0.0.0/0"]  # Allow SSH access from all IPs for now
   }
 
   egress {
