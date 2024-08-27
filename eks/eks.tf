@@ -12,7 +12,7 @@ module "eks" {
   cluster_endpoint_private_access = true
 
   vpc_id     = module.vpc.vpc_id
-  subnet_ids = [module.vpc.private-subnet[0].id, module.vpc.private-subnet[1].id]
+  subnet_ids = module.vpc.private_subnets
 
   eks_managed_node_group_defaults = {
     ami_type              = "AL2_x86_64"
