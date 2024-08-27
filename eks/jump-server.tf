@@ -2,7 +2,7 @@ resource "aws_instance" "jump_server" {
   ami                    = "ami-0a0e5d9c7acc336f1"  # Replace with your desired AMI ID (e.g., Amazon Linux 2)
   instance_type          = "t2.medium"
   vpc_security_group_ids = [aws_security_group.jump_server_sg.id]
-  subnet_id              = module.vpc.public_subnets  # Replace with your public subnet ID
+  subnet_id              = module.vpc.public_subnets[0]  # Choose the first public subnet
 
   root_block_device {
     volume_size = 30  # 30 GB storage
@@ -43,7 +43,7 @@ resource "aws_security_group" "jump_server_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Allow SSH access from all IPs for now
+    cidr_blocks = ["0.0.0.0/0"]  # Consider restricting this to specific IP ranges
   }
 
   egress {
