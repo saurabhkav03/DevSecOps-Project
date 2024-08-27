@@ -37,7 +37,7 @@ resource "aws_instance" "jump_server" {
 resource "aws_security_group" "jump_server_sg" {
   name        = "jump-server-sg"
   description = "Allow SSH and access to EKS API and worker nodes"
-  vpc_id      = module.vpc.id  # Replace with your VPC ID
+  vpc_id      = module.vpc.vpc_id  # Replace with your VPC ID
 
   ingress {
     from_port   = 22
