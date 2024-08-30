@@ -1,10 +1,12 @@
 pipeline {
     agent any // This specifies that the pipeline can run on any available Jenkins agent.
-
+    tools {
+        nodejs 'nodejs'
+    }
     environment {
-        AWS_ACCOUNT_ID = "" // AWS Account ID, should be filled with your account ID.
-        AWS_DEFAULT_REGION = "" // AWS Region, e.g., us-west-2.
-        IMAGE_REPO_NAME = "" // The name of your ECR repository.
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID') // AWS Account ID, should be filled with your account ID.
+        AWS_DEFAULT_REGION = "us-east-1" // AWS Region, e.g., us-west-2.
+        IMAGE_REPO_NAME = credentials('ECR_REPO2') // The name of your ECR repository.
         REPOSITORY_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/" // ECR repository URL, constructed using the account ID and region.
     }
 
