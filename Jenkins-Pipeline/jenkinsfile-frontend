@@ -1,0 +1,117 @@
+pipeline {
+    agent any // This specifies that the pipeline can run on any available Jenkins agent.
+
+    environment {
+        AWS_ACCOUNT_ID = "" // AWS Account ID, should be filled with your account ID.
+        AWS_DEFAULT_REGION = "" // AWS Region, e.g., us-west-2.
+        IMAGE_REPO_NAME = "" // The name of your ECR repository.
+        IMAGE_TAG = "" // The tag for the Docker image, typically set to ${BUILD_NUMBER} or another unique identifier.
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/" // ECR repository URI, constructed using the account ID and region.
+    }
+
+    stages {
+        stage('Git Checkout') {
+            steps {
+                // Checks out the code from the Git repository. The branch is specified as 'main'.
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/saurabhkav03/DevSecOps-Project.git']])
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            steps {
+                dir('Application-Code/frontend') {
+                    def scannerHome = tool 'SonarQube Scanner' // Sets the path to the SonarQube scanner tool.
+                    withSonarQubeEnv('sonar-server') { // Sets up the environment to run SonarQube analysis.
+                        // Runs SonarQube scanner with project-specific parameters.
+                        sh '''${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=frontend \
+                        -Dsonar.projectName=frontend'''
+                    }
+                }
+            }
+        }
+
+        stage('Quality Check') {
+            steps {
+                script {
+                    // Waits for the SonarQube quality gate result.
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
+            }
+        }
+
+        stage('Dependency Check') {
+            steps {
+                dir('Application-Code/frontend') {
+                    // Runs OWASP Dependency Check on the frontend code.
+                    dependencyCheck additionalArguments: '''
+                                -o './' // Output directory for the report.
+                                -s './' // Source directory to scan.
+                                -f 'ALL' // Generate all types of reports.
+                                --prettyPrint''', odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+                    // Publishes the Dependency Check report.
+                    dependencyCheckPublisher pattern: 'dependency-check-frontend-report.xml'
+                }
+            }
+        }
+
+        stage('Trivy File Scan') {
+            steps {
+                dir('Application-Code/frontend') {
+                    // Scans the file system with Trivy for vulnerabilities.
+                    trivy fs . > trivyfs_frontend.txt
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('Application-Code/frontend') {
+                    // Builds the Docker image with the specified tag.
+                    sh 'docker build -t ${IMAGE_REPO_NAME}:${IMAGE_TAG} .'
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    // Logs in to AWS ECR using the Docker CLI.
+                    sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}'
+                    // Tags the Docker image with the repository URL.
+                    sh 'docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${IMAGE_TAG}'
+                    // Pushes the Docker image to AWS ECR.
+                    sh 'docker push ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${IMAGE_TAG}'
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                // Scans the Docker image stored in ECR with Trivy for vulnerabilities.
+                sh 'trivy image ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${IMAGE_TAG} > trivyfrontendimage.txt'
+            }
+        }
+
+        stage('Update Manifest File') {
+            steps {
+                dir('K8s/manifests/Frontend/') {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                        git config --user.name "Saurabh Kaveri"
+                        git config --user.email "kaverisaurabh1998@gmail.com"
+
+                        # Update the image tag in deployment.yaml with the new image tag.
+                        sed -i "s|${IMAGE_REPO_NAME}:.*|${REPOSITORY_URI}${IMAGE_REPO_NAME}:${IMAGE_TAG}|" deployment.yaml
+
+                        # Commit and push the changes to the GitHub repository.
+                        git add deployment.yaml
+                        git commit -m "Updated image in frontend deployment file with version ${IMAGE_TAG}"
+                        git push https://${GITHUB_TOKEN}@github.com/saurabhkav03/DevSecOps-Project HEAD:main
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,117 @@
+pipeline {
+    agent any // This specifies that the pipeline can run on any available Jenkins agent.
+
+    environment {
+        AWS_ACCOUNT_ID = "" // AWS Account ID, should be filled with your account ID.
+        AWS_DEFAULT_REGION = "" // AWS Region, e.g., us-west-2.
+        IMAGE_REPO_NAME = "" // The name of your ECR repository.
+        REPOSITORY_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/" // ECR repository URL, constructed using the account ID and region.
+    }
+
+    stages {
+        stage('Git checkout') {
+            steps {
+                // Checks out the code from the Git repository. The branch is specified as 'main'.
+                checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/saurabhkav03/DevSecOps-Project.git']])
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            steps {
+                dir('Application-Code/backend') {
+                    def scannerHome = tool 'SonarQube Scanner' // Sets the path to the SonarQube scanner tool.
+                    withSonarQubeEnv('sonar-server') { // Sets up the environment to run SonarQube analysis.
+                        // Runs SonarQube scanner with project-specific parameters.
+                        sh '''${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=backend \
+                        -Dsonar.projectName=backend'''
+                    }
+                }
+            }
+        }
+
+        stage('Quality Check') {
+            steps {
+                script {
+                    // Waits for the SonarQube quality gate result.
+                    waitForQualityGate abortPipeline: false, credentialsId: 'sonar-token'
+                }
+            }
+        }
+
+        stage('Dependency Check') {
+            steps {
+                dir('Application-Code/backend') {
+                    // Runs OWASP Dependency Check on the backend code.
+                    dependencyCheck additionalArguments: '''
+                            -o './' // Output directory for the report.
+                            -s './' // Source directory to scan.
+                            -f 'ALL' // Generate all types of reports.
+                            --prettyPrint''', odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
+                    // Publishes the Dependency Check report.
+                    dependencyCheckPublisher pattern: 'dependency-check-backend-report.xml'
+                }
+            }
+        }
+
+        stage('Trivy Filesystem Scan') {
+            steps {
+                dir('Application-Code/backend') {
+                    // Scans the file system with Trivy for vulnerabilities.
+                    trivy fs . > trivyfs_backend.txt
+                }
+            }
+        }
+
+        stage('Image Build') {
+            steps {
+                dir('Application-Code/backend') {
+                    // Builds the Docker image with the specified tag.
+                    sh 'docker build -t ${IMAGE_REPO_NAME}:${BUILD_NUMBER} .'
+                }
+            }
+        }
+
+        stage('Image Push') {
+            steps {
+                script {
+                    // Logs in to AWS ECR using the Docker CLI.
+                    sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URL}'
+                    // Tags the Docker image with the repository URL.
+                    sh 'docker tag ${IMAGE_REPO_NAME}:${BUILD_NUMBER} ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
+                    // Pushes the Docker image to AWS ECR.
+                    sh 'docker push ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
+                }
+            }
+        }
+
+        stage('Trivy Image Scan') {
+            steps {
+                // Scans the Docker image stored in ECR with Trivy for vulnerabilities.
+                sh 'trivy image ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER} > trivybackendimage.txt'
+            }
+        }
+
+        stage('Update Deployment File') {
+            steps {
+                dir('K8s/manifests/Backend') {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                        # Configure Git user information
+                        git config user.name "Saurabh Kaveri"
+                        git config user.email "kaverisaurabh1998@gmail.com"
+
+                        # Update the image tag in deployment.yaml with the new build number.
+                        sed -i "s|${IMAGE_REPO_NAME}:.*|${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}|" deployment.yaml
+
+                        # Commit and push the changes to the GitHub repository.
+                        git add deployment.yaml
+                        git commit -m "Updated image in backend deployment file with version ${BUILD_NUMBER}"
+                        git push https://${GITHUB_TOKEN}@github.com/saurabhkav03/DevSecOps-Project HEAD:main
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}
