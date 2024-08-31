@@ -11,7 +11,7 @@ metadata:
 spec:
   ingressClassName: alb  # Specifies the Ingress class to use (ALB Ingress controller in this case)
   rules:
-    - host: kaveri.us.to	
+    - host: saurabhkav.us.to	
       http:
         paths:
           - path: /api
