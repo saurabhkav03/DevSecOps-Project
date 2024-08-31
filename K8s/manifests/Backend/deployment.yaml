@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
       - name: api  # Name of the container
-        image: 905418277025.dkr.ecr.us-east-1.amazonaws.com/backend:1  # Docker image from Amazon ECR
+        image: 905418277025.dkr.ecr.us-east-1.amazonaws.com/backend:2
         imagePullPolicy: Always  # Always pull the image when starting a container
         env:
         - name: MONGO_CONN_STR  # Environment variable for MongoDB connection string
