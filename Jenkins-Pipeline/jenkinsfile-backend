@@ -3,11 +3,13 @@ pipeline {
     tools {
         nodejs 'nodejs'
     }
+
     environment {
+        SCANNER_HOME=tool 'sonar-scanner'
         AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID') // AWS Account ID, should be filled with your account ID.
         AWS_DEFAULT_REGION = "us-east-1" // AWS Region, e.g., us-west-2.
         IMAGE_REPO_NAME = credentials('ECR_REPO2') // The name of your ECR repository.
-        REPOSITORY_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/" // ECR repository URL, constructed using the account ID and region.
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/" // ECR repository URL, constructed using the account ID and region.
     }
 
     stages {
@@ -21,10 +23,9 @@ pipeline {
         stage('Code Quality Analysis') {
             steps {
                 dir('Application-Code/backend') {
-                    def scannerHome = tool 'SonarQube Scanner' // Sets the path to the SonarQube scanner tool.
                     withSonarQubeEnv('sonar-server') { // Sets up the environment to run SonarQube analysis.
                         // Runs SonarQube scanner with project-specific parameters.
-                        sh '''${scannerHome}/bin/sonar-scanner \
+                        sh '''$SCANNER_HOME/bin/sonar-scanner \
                         -Dsonar.projectKey=backend \
                         -Dsonar.projectName=backend'''
                     }
@@ -51,7 +52,7 @@ pipeline {
                             -f 'ALL' // Generate all types of reports.
                             --prettyPrint''', odcInstallation: 'OWASP Dependency-Check Vulnerabilities'
                     // Publishes the Dependency Check report.
-                    dependencyCheckPublisher pattern: 'dependency-check-backend-report.xml'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
         }
@@ -60,7 +61,7 @@ pipeline {
             steps {
                 dir('Application-Code/backend') {
                     // Scans the file system with Trivy for vulnerabilities.
-                    trivy fs . > trivyfs_backend.txt
+                    sh 'trivy fs . > trivyfs_backend.txt'
                 }
             }
         }
@@ -69,7 +70,7 @@ pipeline {
             steps {
                 dir('Application-Code/backend') {
                     // Builds the Docker image with the specified tag.
-                    sh 'docker build -t ${IMAGE_REPO_NAME}:${BUILD_NUMBER} .'
+                    sh 'docker build -t ${IMAGE_REPO_NAME} .'
                 }
             }
         }
@@ -78,11 +79,11 @@ pipeline {
             steps {
                 script {
                     // Logs in to AWS ECR using the Docker CLI.
-                    sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URL}'
+                    sh 'aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${REPOSITORY_URI}'
                     // Tags the Docker image with the repository URL.
-                    sh 'docker tag ${IMAGE_REPO_NAME}:${BUILD_NUMBER} ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
+                    sh 'docker tag ${IMAGE_REPO_NAME} ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
                     // Pushes the Docker image to AWS ECR.
-                    sh 'docker push ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
+                    sh 'docker push ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${BUILD_NUMBER}'
                 }
             }
         }
@@ -90,7 +91,7 @@ pipeline {
         stage('Trivy Image Scan') {
             steps {
                 // Scans the Docker image stored in ECR with Trivy for vulnerabilities.
-                sh 'trivy image ${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER} > trivybackendimage.txt'
+                sh 'trivy image ${REPOSITORY_URI}${IMAGE_REPO_NAME}:${BUILD_NUMBER} > trivybackendimage.txt'
             }
         }
 
@@ -104,8 +105,8 @@ pipeline {
                         git config user.email "kaverisaurabh1998@gmail.com"
 
                         # Update the image tag in deployment.yaml with the new build number.
-                        sed -i "s|${IMAGE_REPO_NAME}:.*|${REPOSITORY_URL}${IMAGE_REPO_NAME}:${BUILD_NUMBER}|" deployment.yaml
-
+                        sed -i "s/${IMAGE_REPO_NAME}:.*/${IMAGE_REPO_NAME}:${BUILD_NUMBER}/" deployment.yaml
+                        
                         # Commit and push the changes to the GitHub repository.
                         git add deployment.yaml
                         git commit -m "Updated image in backend deployment file with version ${BUILD_NUMBER}"
@@ -117,3 +118,4 @@ pipeline {
         }
     }
 }
+
